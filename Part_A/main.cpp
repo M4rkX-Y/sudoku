@@ -27,6 +27,7 @@ public:
     void print();
     void printConflict();
     bool isBlank(int, int);
+    bool isConflict(int, int, int);
     bool isSolved();
     void setCell(int, int, int);
     void clearCell(int, int);
@@ -117,6 +118,11 @@ void board::setCell(int i, int j, int k)
     }
     else
         throw rangeError("bad value in setCell");
+}
+
+bool board::isConflict(int i, int j, int k)
+{
+    return conflict[i][j][k - 1];
 }
 
 void board::clearCell(int i, int j)
@@ -283,7 +289,15 @@ int main()
             {
                 if (b1.isBlank(1, i))
                 {
-                    b1.setCell(1, i, 4);
+                    for (int k = 1; k <= BoardSize; k++)
+                    {
+                        cout << i << " " << k << " " << b1.isConflict(1, i, k) << endl;
+                        if (!b1.isConflict(1, i, k))
+                        {
+                            b1.setCell(1, i, k);
+                            break;
+                        }
+                    }
                     break;
                 }
             }

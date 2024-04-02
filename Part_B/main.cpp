@@ -15,7 +15,6 @@ const int SquareSize = 3; // The number of cells in a small square
 const int BoardSize = SquareSize * SquareSize;
 const int MinValue = 1;
 const int MaxValue = 9;
-int numSolutions = 0;
 
 class board
 // Stores the entire Sudoku board
@@ -26,12 +25,21 @@ public:
     void initialize(ifstream &fin);
     void print();
     void printConflict();
+    void printConflict_Better();
     bool isBlank(int, int);
-    bool isSolved();
+    bool isConflict(int, int, int);
+    bool isConflict_Better(int, int, int);
+    bool isSolved(int &, int &);
     void setCell(int, int, int);
+    void setCell_Better(int, int, int);
     void clearCell(int, int);
+    void clearCell_Better(int, int);
     void setConflict(int, int, int);
+    void setConflict_Better(int, int, int);
     void updateConflict(int, int);
+    bool solver();
+    bool solver_Better();
+    int getCount();
     ValueType getCell(int, int);
 
 private:
@@ -39,10 +47,14 @@ private:
     // dimension, i.e., they are each (BoardSize+1) * (BoardSize+1)
     matrix<ValueType> value;
     matrix<vector<bool>> conflict;
+    vector<vector<bool>> conflict_row;
+    vector<vector<bool>> conflict_col;
+    vector<vector<bool>> conflict_box;
+    int count;
 };
 
 board::board(int sqSize)
-    : value(BoardSize + 1, BoardSize + 1), conflict(BoardSize + 1, BoardSize + 1)
+    : value(BoardSize + 1, BoardSize + 1), conflict(BoardSize + 1, BoardSize + 1), count(0), conflict_row(BoardSize, vector<bool>(BoardSize, false)), conflict_col(BoardSize, vector<bool>(BoardSize, false)), conflict_box(BoardSize, vector<bool>(BoardSize, false))
 // Board constructor
 {
     clear();
@@ -51,6 +63,7 @@ board::board(int sqSize)
 void board::clear()
 // Mark all possible values as legal for each board entry
 {
+    count = 0;
     for (int i = 1; i <= BoardSize; i++)
         for (int j = 1; j <= BoardSize; j++)
         {
@@ -60,6 +73,13 @@ void board::clear()
             {
                 conflict[i][j][k] = false;
             }
+        }
+    for (int i = 0; i < BoardSize; i++)
+        for (int k = 0; k < BoardSize; k++)
+        {
+            conflict_row[i][k] = false;
+            conflict_col[i][k] = false;
+            conflict_box[i][k] = false;
         }
 }
 
@@ -76,6 +96,7 @@ void board::initialize(ifstream &fin)
             if (ch != '.')
             {
                 setCell(i, j, ch - '0'); // Convert char to int
+                setCell_Better(i, j, ch - '0');
             }
         }
 }
@@ -119,6 +140,34 @@ void board::setCell(int i, int j, int k)
         throw rangeError("bad value in setCell");
 }
 
+void board::setCell_Better(int i, int j, int k)
+{
+    if (i >= 1 && i <= BoardSize && j >= 1 && j <= BoardSize)
+    {
+        value[i][j] = k;
+        setConflict_Better(i, j, k);
+    }
+    else
+        throw rangeError("bad value in setCell");
+}
+
+bool board::isConflict(int i, int j, int k)
+{
+    return conflict[i][j][k - 1];
+}
+
+bool board::isConflict_Better(int i, int j, int k)
+{
+    int sqrNum = squareNumber(i, j);
+    if (conflict_row[i - 1][k - 1])
+        return true;
+    if (conflict_col[j - 1][k - 1])
+        return true;
+    if (conflict_box[sqrNum - 1][k - 1])
+        return true;
+    return false;
+}
+
 void board::clearCell(int i, int j)
 {
     if (i >= 1 && i <= BoardSize && j >= 1 && j <= BoardSize)
@@ -139,6 +188,20 @@ void board::clearCell(int i, int j)
         throw rangeError("bad value in clearCell");
 }
 
+void board::clearCell_Better(int i, int j)
+{
+    if (i >= 1 && i <= BoardSize && j >= 1 && j <= BoardSize)
+    {
+        int k = getCell(i, j), sqrNum = squareNumber(i, j);
+        value[i][j] = Blank;
+        conflict_row[i - 1][k - 1] = false;
+        conflict_col[j - 1][k - 1] = false;
+        conflict_box[sqrNum - 1][k - 1] = false;
+    }
+    else
+        throw rangeError("bad value in clearCell");
+}
+
 void board::setConflict(int i, int j, int k)
 // Set the conflict vector of all the cells in the same roll/column/square based on the number
 {
@@ -153,6 +216,19 @@ void board::setConflict(int i, int j, int k)
                     conflict[x][y][k - 1] = true;
             }
         }
+    }
+    else
+        throw rangeError("bad value in setConflict");
+}
+
+void board::setConflict_Better(int i, int j, int k)
+{
+    if (i >= 1 && i <= BoardSize && j >= 1 && j <= BoardSize)
+    {
+        int sqrNum = squareNumber(i, j);
+        conflict_row[i - 1][k - 1] = true;
+        conflict_col[j - 1][k - 1] = true;
+        conflict_box[sqrNum - 1][k - 1] = true;
     }
     else
         throw rangeError("bad value in setConflict");
@@ -192,14 +268,18 @@ bool board::isBlank(int i, int j)
     return (getCell(i, j) == Blank);
 }
 
-bool board::isSolved()
+bool board::isSolved(int &row, int &col)
 {
     for (int i = 1; i <= BoardSize; i++)
     {
         for (int j = 1; j <= BoardSize; j++)
         {
             if (isBlank(i, j))
+            {
+                row = i;
+                col = j;
                 return false;
+            }
         }
     }
     return true;
@@ -258,6 +338,91 @@ void board::printConflict()
     }
 }
 
+void board::printConflict_Better()
+{
+    for (int i = 1; i <= BoardSize; i++)
+    {
+        cout << "conflict_row[" << i << "] = {";
+        for (int k = 0; k < BoardSize; k++)
+        {
+            if (conflict_row[i - 1][k])
+                cout << "T";
+            else
+                cout << "F";
+        }
+        cout << "}" << endl;
+    }
+    for (int i = 1; i <= BoardSize; i++)
+    {
+        cout << "conflict_col[" << i << "] = {";
+        for (int k = 0; k < BoardSize; k++)
+        {
+            if (conflict_col[i - 1][k])
+                cout << "T";
+            else
+                cout << "F";
+        }
+        cout << "}" << endl;
+    }
+    for (int i = 1; i <= BoardSize; i++)
+    {
+        cout << "conflict_box[" << i << "] = {";
+        for (int k = 0; k < BoardSize; k++)
+        {
+            if (conflict_box[i - 1][k])
+                cout << "T";
+            else
+                cout << "F";
+        }
+        cout << "}" << endl;
+    }
+}
+
+bool board::solver()
+{
+    count++;
+    int row, col;
+    if (isSolved(row, col))
+        return true;
+
+    for (int k = 1; k <= BoardSize; k++)
+    {
+        if (!isConflict(row, col, k))
+        {
+            setCell(row, col, k);
+            if (solver())
+                return true;
+            clearCell(row, col);
+        }
+    }
+    return false;
+}
+
+bool board::solver_Better()
+{
+    count++;
+    int row, col;
+    if (isSolved(row, col))
+        return true;
+
+    for (int k = 1; k <= BoardSize; k++)
+    {
+        if (!isConflict_Better(row, col, k))
+        {
+            setCell_Better(row, col, k);
+            if (solver_Better())
+                return true;
+            clearCell_Better(row, col);
+        }
+    }
+    return false;
+}
+
+int board::getCount()
+{
+    return count;
+}
+
 int main()
 {
     ifstream fin;
@@ -272,40 +437,26 @@ int main()
     try
     {
         board b1(SquareSize);
+        int sumCount = 0, i = 0;
         while (fin && fin.peek() != 'Z')
         {
+            i++;
             b1.initialize(fin);
             cout << "Print Board:" << endl;
             b1.print();
-            cout << "Print Conflict Vecters: " << endl;
-            b1.printConflict();
-            for (int i = 1; i <= BoardSize; i++)
+            cout << "Solving Board " << i << "...." << endl;
+            if (b1.solver_Better())
             {
-                if (b1.isBlank(1, i))
-                {
-                    b1.setCell(1, i, 4);
-                    break;
-                }
+                cout << "Solution: " << endl;
+                b1.print();
             }
-            for (int i = 1; i <= BoardSize; i++)
-            {
-                if (!b1.isBlank(1, i))
-                {
-                    b1.clearCell(1, i);
-                    break;
-                }
-            }
-            cout << "Print Updated Board:" << endl;
-            b1.print();
-            cout << "Print Updated Conflict Vecters: " << endl;
-            b1.printConflict();
-            cout << "Is the board solved: ";
-            if (b1.isSolved())
-                cout << "True";
             else
-                cout << "False";
-            cout << endl;
+                cout << "No Solution" << endl;
+            cout << b1.getCount() << " Recursive Calls to Solve Board " << i << endl;
+            sumCount = sumCount + b1.getCount();
         }
+        cout << "Total Recursive Calls: " << sumCount << endl;
+        cout << "Average Recursive Calls: " << sumCount / i << endl;
     }
     catch (indexRangeError &ex)
     {
